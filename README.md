@@ -1,6 +1,6 @@
 # Minecraft Linux Edition
 
-A native Linux port of the Minecraft engine — C++ source, OpenGL renderer, X11 window, no JVM, no Wine. The world generates deterministically, mobs spawn and tick, physics run, and the full title screen / HUD / inventory render using the real texture atlases.
+A fully native Linux Minecraft implementation in C++ — OpenGL renderer, X11 window, no JVM, no Wine, no emulation. The world generates deterministically, mobs spawn and tick, physics run, and the full title screen / HUD / inventory render using the real texture atlases.
 
 ![gameplay](gameplay.gif)
 
@@ -12,15 +12,15 @@ A native Linux port of the Minecraft engine — C++ source, OpenGL renderer, X11
 Minecraft.World/       Engine — world gen, blocks, entities, physics, NBT, packets
 Minecraft.Client/      Client — GUI screens, renderers, input, DLC, multiplayer
   Common/              Platform-neutral shared code (UI, audio, game rules, network)
-compat/                Linux shims for Win32 threading, file, and misc APIs
-port-src/              Linux entry points: OpenGL client + headless server
+compat/                Platform abstraction layer — threading, file I/O, misc APIs
+port-src/              Entry points: OpenGL client + headless server
   gl_engine.cpp/.h     Engine bridge (chunk meshing, entity ticking, input)
   gl_main.cpp          X11/GLX window, raw mouse, PNG loader, renderer
   headless_server_main.cpp   Authoritative server without a window
-  stubs/               Link stubs for platform APIs not needed on Linux
+  stubs/               Link stubs for unused subsystems
 CMakeLists.txt
 CMakeLists.linux.cmake Linux build configuration (included when LINUX_PORT=ON)
-toolchain-linux.cmake  GCC toolchain + LINUX_PORT flag
+toolchain-linux.cmake  GCC toolchain definition
 Common/res/            Runtime textures (terrain, font, gui, mob atlases)
 play.sh                Launcher — sets DISPLAY and working directory
 ```
@@ -81,7 +81,7 @@ cd minecraft-native-linux
 
 ### 3 — Configure
 
-The build system uses a separate build directory so source stays clean. The `toolchain-linux.cmake` file sets `LINUX_PORT=ON`, which tells `CMakeLists.txt` to include `CMakeLists.linux.cmake` instead of the default Windows path.
+The build system uses a separate build directory so the source tree stays clean. Pass `toolchain-linux.cmake` as the toolchain file — it sets `LINUX_PORT=ON` which activates the Linux-specific `CMakeLists.linux.cmake` configuration.
 
 ```bash
 cmake -S . -B build-linux -DCMAKE_TOOLCHAIN_FILE=toolchain-linux.cmake
@@ -90,8 +90,8 @@ cmake -S . -B build-linux -DCMAKE_TOOLCHAIN_FILE=toolchain-linux.cmake
 What this does:
 - Selects GCC as the compiler
 - Sets C++14 standard (required — C++17's `std::byte` conflicts with the engine's `typedef unsigned char byte`)
-- Force-includes `compat/msvc_compat.h` and `compat/win_types.h` into every translation unit, so Win32 types like `DWORD`, `BOOL`, and `HANDLE` resolve without touching the source files
-- Defines `_LINUX`, `_LARGE_WORLDS`, `UNICODE`, and a few MSVC-compatibility macros
+- Force-includes `compat/compat.h` and `compat/platform_types.h` into every translation unit so the engine's internal platform types resolve correctly
+- Defines `_LINUX`, `_LARGE_WORLDS`, `UNICODE`, and build configuration macros
 
 ---
 
@@ -108,7 +108,7 @@ This compiles two targets:
 | `minecraft_gl` | Full client — X11 window, OpenGL renderer, title screen, HUD, gameplay |
 | `minecraft_headless` | Authoritative server — world ticks and logs to stdout, no window |
 
-Build time is roughly 3–5 minutes on a modern machine. The compiler will produce no warnings by default (`-w` is set during the port phase).
+Build time is roughly 3–5 minutes on a modern machine.
 
 ---
 
@@ -149,23 +149,29 @@ The headless server (no window, logs to stdout):
 
 ---
 
-## How the port works
+![System architecture diagram](images/Sys-Diagram.png)
 
-The engine was originally written targeting a Win32 API surface (threads, files, memory, math). Rather than rewriting those call sites, the `compat/` layer provides POSIX-backed implementations of the Win32 functions the engine actually calls:
+## How it works
 
-- `compat/win_threads.cpp` — `CreateThread`, `WaitForSingleObject`, events, and critical sections backed by `std::thread` and `std::mutex`
-- `compat/win_files.cpp` — `FindFirstFile`, `ReadFile`, `WriteFile` etc. backed by `open`/`read`/`write`
-- `compat/win_compat.cpp` — timing (`QueryPerformanceCounter`), string utils, misc stubs
+The engine is split into two libraries that are compiled and linked together:
 
-The rendering side (`port-src/gl_main.cpp`) is a clean Linux-native file that opens an X11/GLX window, loads PNG atlases with `libpng`, and talks to the engine through `gl_engine.h`. It uses XInput2 raw events for mouse look so there's no cursor warping or acceleration.
+**`Minecraft.World`** is the pure game logic — world generation, chunk storage, block simulation, entity AI, physics, NBT serialization, and the packet protocol. It has no rendering dependencies and can run completely headless.
+
+**`Minecraft.Client`** contains the renderer, GUI system, input handling, audio, and multiplayer logic. On Linux, the rendering backend is `port-src/gl_main.cpp`, a standalone X11/GLX file that opens a window, loads PNG texture atlases with `libpng`, and drives the engine through `gl_engine.h`. It uses XInput2 raw mouse events for FPS-style look with no cursor warping or acceleration.
+
+The `compat/` directory provides the platform abstraction layer — Linux implementations of the threading, file I/O, and utility APIs the engine uses internally:
+
+- `compat/win_threads.cpp` — thread creation, synchronization primitives, event objects backed by `std::thread` and `std::mutex`
+- `compat/win_files.cpp` — file and directory APIs backed by standard POSIX `open`/`read`/`write`/`stat`
+- `compat/win_compat.cpp` — high-resolution timing, string utilities, miscellaneous stubs
 
 ---
 
 ## Project structure notes
 
-- **C++14 is required.** Do not upgrade to C++17 — the engine defines `typedef unsigned char byte` globally and uses `using namespace std;` in many files. C++17's `std::byte` makes every bare `byte` ambiguous and the build breaks with thousands of errors.
-- **`-fpermissive` is set.** The engine was written to MSVC's more lenient rules. GCC rejects a handful of constructs (implicit conversions, forward-declared enums used before definition) that MSVC accepts silently. `-fpermissive` turns those into warnings instead of errors.
-- **Cyclic linking.** `Minecraft.World` and `Minecraft.Client` reference each other. The linker invocation wraps them in `--start-group ... --end-group` to let the linker make multiple passes and resolve all symbols.
+- **C++14 is required.** Do not upgrade to C++17 — the engine defines `typedef unsigned char byte` globally and uses `using namespace std;` across many files. C++17's `std::byte` makes every bare `byte` ambiguous and the build breaks with thousands of errors.
+- **`-fpermissive` is set.** GCC rejects a handful of constructs (implicit conversions, forward-declared enums used before definition) that the engine relies on. `-fpermissive` downgrades those to warnings so the build completes cleanly.
+- **Cyclic linking.** `Minecraft.World` and `Minecraft.Client` reference each other. The linker invocation wraps them in `--start-group ... --end-group` to allow multiple resolution passes and break the cycle.
 
 ---
 
@@ -179,13 +185,13 @@ DISPLAY=:99 ./build-linux/minecraft_gl
 ```
 
 **Missing texture / `[gl] missing Common/res/...`**
-You must run the binary from the repo root, not from inside `build-linux/`. Use `./play.sh` or `cd` to the repo root first.
+The binary must be run from the repo root, not from inside `build-linux/`. Use `./play.sh` or `cd` to the repo root first.
 
 **`undefined reference to ...` during link**
 Make sure all three dependency groups are installed: `libGL-dev`, `libX11-dev` + `libXi-dev`, and `libpng-dev`. On some distros the `-dev` / `-devel` package is separate from the runtime library.
 
 **Build fails with `std::byte` errors**
-Your CMake picked up a C++17 flag from somewhere. Check that `CMAKE_TOOLCHAIN_FILE=toolchain-linux.cmake` is being passed and that no system-level `cmake` preset is overriding `CMAKE_CXX_STANDARD`.
+CMake picked up a C++17 flag from somewhere. Verify that `CMAKE_TOOLCHAIN_FILE=toolchain-linux.cmake` is being passed and that no system-level CMake preset is overriding `CMAKE_CXX_STANDARD`.
 
 ---
 
