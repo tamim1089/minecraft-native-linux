@@ -2,7 +2,10 @@
 
 A fully native Linux Minecraft implementation written in C++. Uses OpenGL for rendering, X11 for windowing, and has no dependency on a JVM, Wine, or any emulation layer. The engine runs the full game loop: world generation, chunk loading, entity AI, physics, crafting, enchanting, and the complete GUI stack.
 
-![gameplay](gameplay.gif)
+<p align="center">
+  <img src="screenshots/title.png" width="49%" alt="Title screen" />
+  <img src="screenshots/gameplay1.png" width="49%" alt="Gameplay" />
+</p>
 
 ---
 
@@ -18,6 +21,14 @@ A fully native Linux Minecraft implementation written in C++. Uses OpenGL for re
 - Day/night cycle, weather, lighting engine
 - NBT-based save format with chunk compression
 - Headless server mode — runs the world with no window, logs to stdout
+
+---
+
+## Screenshots
+
+| Title screen | In-game |
+|:---:|:---:|
+| ![title](screenshots/title.png) | ![gameplay](screenshots/gameplay1.png) |
 
 ---
 
