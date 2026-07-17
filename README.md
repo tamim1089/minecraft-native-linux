@@ -332,4 +332,3 @@ For GUI changes, screens are in `Minecraft.Client/Common/UI/` and use the XUI fr
 ## License
 
 Source provided for educational and preservation purposes.
-# Hi
