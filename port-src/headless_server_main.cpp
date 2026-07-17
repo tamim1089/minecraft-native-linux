@@ -21,6 +21,7 @@
 
 #include <cstdio>
 #include <cstdint>
+#include <cstdlib>
 
 // Engine bring-up (registers tiles/items/entities; starts the tile-update worker).
 extern void MinecraftWorld_RunStaticCtors();
@@ -50,8 +51,8 @@ int main(int argc, char** argv) {
     std::printf(" Minecraft - headless server (Phase 1)\n");
     std::printf("============================================================\n");
 
-    const __int64 SEED = 20240604;
-    const int NUM_TICKS = (argc > 1) ? atoi(argv[1]) : 200;   // 200 ticks = 10s of sim @20Hz
+    const long long SEED = 20240604;
+    const int NUM_TICKS = (argc > 1) ? (int)std::strtol(argv[1], nullptr, 10) : 200;
 
     // Thread storage MUST be set up before the static ctors — tile/item registration calls
     // Tile::setShape() which writes through the per-thread TLS (TlsGetValue would be null otherwise).
@@ -115,20 +116,20 @@ int main(int argc, char** argv) {
 
     // --- 20 Hz tick loop (fixed timestep, real wall-clock paced) ---
     std::printf("[tick] running %d ticks @ %d Hz ...\n", NUM_TICKS, TPS);
-    __int64 startMs = System::currentTimeMillis();
+    long long startMs = System::currentTimeMillis();
     for (int i = 0; i < NUM_TICKS; ++i) {
-        __int64 t0 = System::currentTimeMillis();
+        long long t0 = System::currentTimeMillis();
         server->headlessTick();
         // MinecraftServer::tick() skips tickEntities() when there are 0 players; drive it directly
         // so spawned entities actually simulate in this headless (player-less) server.
         level->tickEntities();
         if ((i + 1) % 40 == 0) std::printf("[tick] %d/%d\n", i + 1, NUM_TICKS);
-        __int64 elapsed = System::currentTimeMillis() - t0;
+        long long elapsed = System::currentTimeMillis() - t0;
         if (elapsed < MS_PER_TICK) port_Sleep((unsigned)(MS_PER_TICK - elapsed));
     }
-    __int64 wallMs = System::currentTimeMillis() - startMs;
-    std::printf("[tick] done: %d ticks in %lld ms (target %d ms)\n",
-                NUM_TICKS, (long long)wallMs, NUM_TICKS * MS_PER_TICK);
+    long long wallMs = System::currentTimeMillis() - startMs;
+    std::printf("[tick] done: %d ticks in %lld ms (target %lld ms)\n",
+                NUM_TICKS, (long long)wallMs, (long long)(NUM_TICKS * (long long)MS_PER_TICK));
 
     // Entity state after ticking (gravity should have moved/settled it deterministically).
     std::printf("[ent ] after %d ticks: pos=(%.4f,%.4f,%.4f) age=%d removed=%d\n",
@@ -147,7 +148,7 @@ int main(int argc, char** argv) {
     if (sf) {
         std::printf("[save] flushing ConsoleSaveFile to disk (Saves/) ...\n");
         sf->DebugFlushToFile();
-        std::printf("[save] on-disk save size = %u bytes\n", sf->getSizeOnDisk());
+        std::printf("[save] on-disk save size = %zu bytes\n", (size_t)sf->getSizeOnDisk());
     }
 
     // --- RELOAD + VERIFY: re-read level.dat back through the engine's own load path

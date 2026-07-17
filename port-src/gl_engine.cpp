@@ -29,9 +29,13 @@
 #include "JavaMath.h"
 #include "gl_engine.h"
 #include <cstdio>
+#include <cmath>
 #include <vector>
 
 extern void MinecraftWorld_RunStaticCtors();
+
+static const long long WORLD_SEED = 20240604;
+static const int MAX_WORLD_Y = 127;
 
 static MinecraftServer* g_server = nullptr;
 static ServerLevel*     g_level  = nullptr;
@@ -48,11 +52,11 @@ extern "C" int engine_boot(void) {
     g_NetworkManager.ServerReadyCreate(true);
     g_NetworkManager.ServerStoppedCreate(true);
     app.HeadlessInitGameSettings();
-    Math::setRandomSeed(20240604);
+    Math::setRandomSeed(WORLD_SEED);
 
     g_server = new MinecraftServer();
-    NetworkGameInitData initData; initData.seed = 20240604;
-    if (!g_server->headlessInit(20240604, &initData)) { std::printf("[engine] world init failed\n"); return 0; }
+    NetworkGameInitData initData; initData.seed = WORLD_SEED;
+    if (!g_server->headlessInit((int)WORLD_SEED, &initData)) { std::printf("[engine] world init failed\n"); return 0; }
     g_level = g_server->getLevel(0);
     LevelData* ld = g_level->getLevelData();
     g_sx = ld->getXSpawn(); g_sy = ld->getYSpawn(); g_sz = ld->getZSpawn();
@@ -61,18 +65,18 @@ extern "C" int engine_boot(void) {
 }
 
 extern "C" void engine_spawn(int* x,int* y,int* z){ if(x)*x=g_sx; if(y)*y=g_sy; if(z)*z=g_sz; }
-extern "C" int  engine_getTile(int x,int y,int z){ if(!g_level||y<0||y>127) return 0; return g_level->getTile(x,y,z); }
-extern "C" int  engine_setTile(int x,int y,int z,int id){ if(!g_level||y<0||y>127) return 0; return g_level->setTile(x,y,z,id)?1:0; }
-extern "C" int  engine_getBrightness(int x,int y,int z){ if(!g_level||y<0||y>127) return 15; return g_level->getRawBrightness(x,y,z); }
+extern "C" int  engine_getTile(int x,int y,int z){ if(!g_level||y<0||y>MAX_WORLD_Y) return 0; return g_level->getTile(x,y,z); }
+extern "C" int  engine_setTile(int x,int y,int z,int id){ if(!g_level||y<0||y>MAX_WORLD_Y) return 0; return g_level->setTile(x,y,z,id)?1:0; }
+extern "C" int  engine_getBrightness(int x,int y,int z){ if(!g_level||y<0||y>MAX_WORLD_Y) return 15; return g_level->getRawBrightness(x,y,z); }
 extern "C" float engine_timeOfDay(void){ return g_level ? g_level->getTimeOfDay(0.0f) : 0.0f; }
 extern "C" float engine_dayLight(void){
     if(!g_level) return 1.0f;
     long long t = (long long)g_level->getTime() % 24000; if(t<0) t+=24000;
     // Minecraft day: noon ~6000 (brightest), midnight ~18000 (darkest).
-    float d = 0.5f + 0.5f*cosf((float)((t-6000)/24000.0)*2.0f*3.14159265f);
+    float d = 0.5f + 0.5f*cosf((float)((t-6000)/24000.0)*2.0f*(float)M_PI);
     return d<0?0:(d>1?1:d);
 }
-extern "C" void engine_setTime(long long t){ if(g_level) g_level->setTime((__int64)t); }
+extern "C" void engine_setTime(long long t){ if(g_level) g_level->setTime((long long)t); }
 extern "C" long long engine_getTimeRaw(void){ return g_level ? (long long)g_level->getTime() : 0; }
 
 extern "C" void engine_tick(void){
@@ -84,7 +88,7 @@ extern "C" void engine_tick(void){
 extern "C" void engine_ensureChunk(int chunkX,int chunkZ){
     if (!g_level) return;
     if (g_level->hasChunk(chunkX, chunkZ)) return;
-    ServerChunkCache* cache = (ServerChunkCache*)g_level->getChunkSource();
+    ServerChunkCache* cache = static_cast<ServerChunkCache*>(g_level->getChunkSource());
     if (cache) cache->create(chunkX, chunkZ, false);
 }
 

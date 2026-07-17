@@ -23,7 +23,7 @@ struct ID3D11PixelShader;
 struct IDXGISwapChain;
 struct IDXGIFactory;
 
-typedef struct _D3D11_RECT { long left, top, right, bottom; } D3D11_RECT;
+typedef struct _D3D11_RECT { LONG left, top, right, bottom; } D3D11_RECT;
 typedef struct _D3D11_VIEWPORT { float TopLeftX, TopLeftY, Width, Height, MinDepth, MaxDepth; } D3D11_VIEWPORT;
 
 // D3D11_BLEND — real DXGI enum values.

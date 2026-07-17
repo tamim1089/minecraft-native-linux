@@ -3,6 +3,8 @@
 #include <unistd.h>
 #include <cstdlib>
 #include <cstring>
+#include <climits>
+#include <cstdlib>
 #include <sys/mman.h>
 #include "win_types.h"
 
@@ -109,6 +111,22 @@ DWORD GetModuleFileNameW(HMODULE, LPWSTR buf, DWORD size) {
     buf[i] = 0; return i;
 }
 
+// Portable timegm replacement for non-GNU systems.
+static time_t portable_timegm(struct tm* t) {
+#if defined(_GNU_SOURCE) || defined(__linux__)
+    return timegm(t);
+#else
+    // Use timegm-compatible algorithm: set TZ to UTC for the conversion.
+    char* oldTZ = getenv("TZ");
+    setenv("TZ", "UTC", 1);
+    tzset();
+    time_t result = mktime(t);
+    if (oldTZ) setenv("TZ", oldTZ, 1); else unsetenv("TZ");
+    tzset();
+    return result;
+#endif
+}
+
 // ---- SYSTEMTIME <-> FILETIME (FILETIME = 100ns ticks since 1601-01-01) ----
 static const unsigned long long EPOCH_DIFF_100NS = 116444736000000000ULL; // 1601->1970
 BOOL SystemTimeToFileTime(const _SYSTEMTIME* st, _FILETIME* ft) {
@@ -116,7 +134,7 @@ BOOL SystemTimeToFileTime(const _SYSTEMTIME* st, _FILETIME* ft) {
     struct tm t; std::memset(&t, 0, sizeof(t));
     t.tm_year = st->wYear - 1900; t.tm_mon = st->wMonth - 1; t.tm_mday = st->wDay;
     t.tm_hour = st->wHour; t.tm_min = st->wMinute; t.tm_sec = st->wSecond;
-    time_t secs = timegm(&t);
+    time_t secs = portable_timegm(&t);
     unsigned long long ticks = (unsigned long long)secs * 10000000ULL
                              + (unsigned long long)st->wMilliseconds * 10000ULL + EPOCH_DIFF_100NS;
     ft->dwLowDateTime  = (unsigned long)(ticks & 0xFFFFFFFFu);
@@ -146,7 +164,12 @@ static CharT* radix_to_str(IntT value, CharT* str, int radix) {
     if (radix < 2 || radix > 36) { str[0] = 0; return str; }
     CharT* p = str;
     bool neg = (radix == 10 && value < 0);
-    unsigned long long uv = neg ? (unsigned long long)(-(long long)value) : (unsigned long long)value;
+    unsigned long long uv;
+    if (neg && (unsigned long long)value == 0 - (unsigned long long)LLONG_MIN) {
+        uv = (unsigned long long)LLONG_MAX + 1;
+    } else {
+        uv = neg ? (unsigned long long)(-(long long)value) : (unsigned long long)value;
+    }
     CharT tmp[66]; int n = 0;
     do { tmp[n++] = (CharT)digits[uv % (unsigned)radix]; uv /= (unsigned)radix; } while (uv);
     if (neg) *p++ = (CharT)'-';

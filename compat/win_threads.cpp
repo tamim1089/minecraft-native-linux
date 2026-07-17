@@ -61,21 +61,26 @@ HANDLE CreateThread(LPSECURITY_ATTRIBUTES, SIZE_T /*stackSize*/,
     if (threadId) *threadId = h->threadId;
 
     DWORD assignedId = h->threadId;
-    h->thr = std::thread([h, start, param, assignedId]() {
-        t_threadId = assignedId;
-        {   // honor CREATE_SUSPENDED until ResumeThread
-            std::unique_lock<std::mutex> lk(h->startMtx);
-            h->startCv.wait(lk, [h]{ return h->resumed; });
-        }
-        DWORD rc = start ? start(param) : 0;
-        h->exitCode = rc;
-        {
-            std::lock_guard<std::mutex> lk(h->mtx);
-            h->finished.store(true);
-            h->signaled = true;           // a thread handle becomes signaled on exit
-        }
-        h->cv.notify_all();
-    });
+    try {
+        h->thr = std::thread([h, start, param, assignedId]() {
+            t_threadId = assignedId;
+            {   // honor CREATE_SUSPENDED until ResumeThread
+                std::unique_lock<std::mutex> lk(h->startMtx);
+                h->startCv.wait(lk, [h]{ return h->resumed; });
+            }
+            DWORD rc = start ? start(param) : 0;
+            h->exitCode = rc;
+            {
+                std::lock_guard<std::mutex> lk(h->mtx);
+                h->finished.store(true);
+                h->signaled = true;           // a thread handle becomes signaled on exit
+            }
+            h->cv.notify_all();
+        });
+    } catch (...) {
+        delete h;
+        throw;
+    }
     return (HANDLE)h;
 }
 
@@ -167,12 +172,14 @@ DWORD WaitForMultipleObjects(DWORD count, const HANDLE* handles, BOOL waitAll, D
     if (!handles || count == 0) return WAIT_FAILED;
     using clock = std::chrono::steady_clock;
     auto deadline = clock::now() + std::chrono::milliseconds(ms == INFINITE ? 0 : ms);
-    // Simple polling loop — adequate for the engine's coarse-grained worker sync.
     for (;;) {
         if (waitAll) {
             bool all = true;
-            for (DWORD i = 0; i < count; ++i)
-                if (!((WinHandle*)handles[i])->signaled) { all = false; break; }
+            for (DWORD i = 0; i < count; ++i) {
+                WinHandle* h = (WinHandle*)handles[i];
+                std::lock_guard<std::mutex> lk(h->mtx);
+                if (!h->signaled) { all = false; break; }
+            }
             if (all) {
                 for (DWORD i = 0; i < count; ++i) {
                     WinHandle* h = (WinHandle*)handles[i];
@@ -184,12 +191,10 @@ DWORD WaitForMultipleObjects(DWORD count, const HANDLE* handles, BOOL waitAll, D
         } else {
             for (DWORD i = 0; i < count; ++i) {
                 WinHandle* h = (WinHandle*)handles[i];
+                std::unique_lock<std::mutex> lk(h->mtx);
                 if (h->signaled) {
-                    std::lock_guard<std::mutex> lk(h->mtx);
-                    if (h->signaled) {
-                        if (!h->manualReset && h->kind == WinHandleBase::K_EVENT) h->signaled = false;
-                        return WAIT_OBJECT_0 + i;
-                    }
+                    if (!h->manualReset && h->kind == WinHandleBase::K_EVENT) h->signaled = false;
+                    return WAIT_OBJECT_0 + i;
                 }
             }
         }
@@ -206,7 +211,7 @@ BOOL CloseHandle(HANDLE handle) {
     return TRUE;
 }
 
-static DWORD g_lastError = 0;
+static thread_local DWORD g_lastError = 0;
 DWORD GetLastError(void)     { return g_lastError; }
 void  SetLastError(DWORD e)  { g_lastError = e; }
 

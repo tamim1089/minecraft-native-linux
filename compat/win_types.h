@@ -43,7 +43,7 @@ typedef unsigned long long  ULONG64;
 typedef int                 BOOL;
 typedef float               FLOAT;
 typedef char                CHAR;
-typedef unsigned int        UINT_PTR;
+typedef uintptr_t           UINT_PTR;
 typedef intptr_t            INT_PTR;
 typedef intptr_t            LONG_PTR;
 typedef uintptr_t           ULONG_PTR;
@@ -317,7 +317,7 @@ int   port_QueryPerformanceFrequency(LARGE_INTEGER* p);
 // _vsnprintf_s is used only in the secure 4-arg array form _vsnprintf_s(buf[N], count, fmt, ap);
 // map to vsnprintf with the array's own size.
 #ifndef _vsnprintf_s
-#define _vsnprintf_s(buf, count, fmt, ap)  vsnprintf((buf), sizeof(buf), (fmt), (ap))
+#define _vsnprintf_s(buf, count, fmt, ap)  vsnprintf((buf), (count), (fmt), (ap))
 #endif
 
 // ---- MSVC CRT string functions -> POSIX/standard equivalents ----
@@ -360,14 +360,14 @@ template <size_t N> inline int strcpy_s(char (&d)[N], const char* s) { strncpy(d
 inline int strcpy_s(char* d, size_t dsz, const char* s) { if (dsz) { strncpy(d, s, dsz - 1); d[dsz-1] = 0; } return 0; }
 // --- wcscat_s / strcat_s ---
 template <size_t N> inline int wcscat_s(wchar_t (&d)[N], const wchar_t* s) { wcsncat(d, s, N - wcslen(d) - 1); return 0; }
-inline int wcscat_s(wchar_t* d, size_t dsz, const wchar_t* s) { wcsncat(d, s, dsz - wcslen(d) - 1); return 0; }
+inline int wcscat_s(wchar_t* d, size_t dsz, const wchar_t* s) { if (dsz) { wcsncat(d, s, dsz - wcslen(d) - 1); } return 0; }
 template <size_t N> inline int strcat_s(char (&d)[N], const char* s) { strncat(d, s, N - strlen(d) - 1); return 0; }
-inline int strcat_s(char* d, size_t dsz, const char* s) { strncat(d, s, dsz - strlen(d) - 1); return 0; }
+inline int strcat_s(char* d, size_t dsz, const char* s) { if (dsz) { strncat(d, s, dsz - strlen(d) - 1); } return 0; }
 // secure radix int->string (explicit-size form). Forward to the _itoa/_i64toa shims.
 extern "C" char* _itoa(int, char*, int);
 extern "C" char* _i64toa(long long, char*, int);
-inline int _itoa_s(int v, char* buf, size_t /*size*/, int radix)        { _itoa(v, buf, radix); return 0; }
-inline int _i64toa_s(long long v, char* buf, size_t /*size*/, int radix) { _i64toa(v, buf, radix); return 0; }
+inline int _itoa_s(int v, char* buf, size_t size, int radix)        { if (size) { _itoa(v, buf, radix); } return 0; }
+inline int _i64toa_s(long long v, char* buf, size_t size, int radix) { if (size) { _i64toa(v, buf, radix); } return 0; }
 #endif
 
 #ifndef PAGE_READWRITE

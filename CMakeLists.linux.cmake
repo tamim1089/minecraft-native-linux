@@ -11,6 +11,13 @@ set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS ON)
 
+# Find system dependencies. Provides clear errors at configure time if missing.
+find_package(OpenGL  REQUIRED)
+find_package(PNG     REQUIRED)
+find_package(ZLIB    REQUIRED)
+find_package(Threads REQUIRED)
+find_package(X11     REQUIRED COMPONENTS Xi)
+
 set(ROOT_DIR    "${CMAKE_SOURCE_DIR}")
 set(WORLD_DIR   "${ROOT_DIR}/Minecraft.World")
 set(CLIENT_DIR  "${ROOT_DIR}/Minecraft.Client")
@@ -40,11 +47,18 @@ add_compile_options(
     "SHELL:-include ${COMPAT_DIR}/win_types.h"
 )
 
-# Old-MSVC-targeted C++ needs leniency; silence the noise for Phase 0.
+# Old-MSVC-targeted C++ needs leniency; suppress known-noisy warnings individually.
 add_compile_options(
     -fpermissive
     -fno-strict-aliasing
-    -w                       # Phase 0/1: quiet warnings, surface only hard errors
+    -Wno-deprecated
+    -Wno-unknown-pragmas
+    -Wno-narrowing
+    -Wno-unused-variable
+    -Wno-unused-function
+    -Wno-reorder
+    -Wno-sign-compare
+    -Wno-char-subscripts
     -g                       # debug info for the Phase 1 runtime bring-up
 )
 
@@ -81,7 +95,7 @@ include_directories(
 # ============================================================
 #  Minecraft.World — engine static library
 # ============================================================
-file(GLOB_RECURSE WORLD_SOURCES "${WORLD_DIR}/*.cpp")
+file(GLOB_RECURSE WORLD_SOURCES CONFIGURE_DEPENDS "${WORLD_DIR}/*.cpp")
 list(FILTER WORLD_SOURCES EXCLUDE REGEX ".*(PS3|PS4|Orbis|PSVita|Durango|Xbox|xbox).*\\.cpp$")
 list(FILTER WORLD_SOURCES EXCLUDE REGEX ".*MemoryLevelStorage(Source)?\\.cpp$")
 # Orphaned: SkyIslandDimension.h was never shipped and nothing but the .vcxproj references the
@@ -100,7 +114,7 @@ add_library(Minecraft.World STATIC ${WORLD_SOURCES})
 # Compile the Client tree EXCEPT the console platform dirs and the pure render/UI/platform-shell
 # files that need real D3D11/Iggy. The server path (MinecraftServer/ServerLevel/ServerChunkCache/
 # app/network) lives here; unused renderer objects simply won't be pulled into the exe.
-file(GLOB_RECURSE CLIENT_SOURCES "${CLIENT_DIR}/*.cpp")
+file(GLOB_RECURSE CLIENT_SOURCES CONFIGURE_DEPENDS "${CLIENT_DIR}/*.cpp")
 list(FILTER CLIENT_SOURCES EXCLUDE REGEX ".*/(PS3|PS4|Orbis|PSVita|Durango|Xbox|XboxMedia|PS3Media|OrbisMedia|PSVitaMedia|DurangoMedia)/.*")
 list(FILTER CLIENT_SOURCES EXCLUDE REGEX ".*(Iggy|iggy)/.*")          # Iggy UI middleware (closed)
 list(FILTER CLIENT_SOURCES EXCLUDE REGEX ".*/Windows64_Minecraft\\.cpp$")   # WinMain + D3D bootstrap
@@ -142,7 +156,8 @@ file(GLOB PORT_STUBS "${ROOT_DIR}/port-src/stubs/*.cpp")
 set(PORT_ASM_STUBS "${ROOT_DIR}/port-src/stubs/auto_link_stubs.s")
 
 # --start-group resolves the cyclic World<->Client symbol references.
-set(ENGINE_LIBS -Wl,--start-group Minecraft.Client Minecraft.World -Wl,--end-group pthread z)
+set(ENGINE_LIBS -Wl,--start-group Minecraft.Client Minecraft.World -Wl,--end-group
+    Threads::Threads ZLIB::ZLIB)
 
 # Headless authoritative server (Phase 1).
 add_executable(minecraft_headless
@@ -155,4 +170,12 @@ add_executable(minecraft_gl
     ${PORT_SUPPORT} ${PORT_STUBS} ${PORT_ASM_STUBS}
     "${ROOT_DIR}/port-src/gl_engine.cpp"     # engine side (includes stdafx)
     "${ROOT_DIR}/port-src/gl_main.cpp")       # GL/X11 side (no stdafx)
-target_link_libraries(minecraft_gl ${ENGINE_LIBS} GL X11 Xi png)
+target_link_libraries(minecraft_gl ${ENGINE_LIBS}
+    OpenGL::GL
+    X11::X11
+    X11::Xi
+    PNG::PNG)
+
+# Install targets — binaries are placed under bin/ in the install prefix.
+install(TARGETS minecraft_gl minecraft_headless
+    RUNTIME DESTINATION bin)

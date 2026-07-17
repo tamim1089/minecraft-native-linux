@@ -2,6 +2,13 @@
 // Title screen, options menu, HUD/hotbar/crosshair (real font/logo/gui atlases), walking + gravity
 // + AABB collision with a fly toggle, captured low-sensitivity mouse look, day/night, live ticking,
 // entities, and streamed per-chunk meshing. Pure GL/X11/png TU (no engine stdafx — header clash).
+
+// Output paths for --video, --demo, --shots, and --playtest modes.
+// Change this to a writable directory on your system, or override via OUTPUT_DIR environment variable.
+static const char* outputDir() {
+    const char* env = getenv("OUTPUT_DIR");
+    return env ? env : ".";
+}
 #include <GL/glx.h>
 #include <GL/gl.h>
 #include <X11/Xlib.h>
@@ -28,17 +35,26 @@ struct Tex { GLuint id=0; int w=0,h=0; };
 static Tex TEX_TERRAIN, TEX_FONT, TEX_LOGO, TEX_GUI, TEX_ICONS, TEX_ITEMS;
 static unsigned char FONT_W[256];   // proportional glyph widths (px within an 8px cell)
 
+struct PngFile {
+    FILE* fp = nullptr;
+    png_structp p = nullptr;
+    png_infop info = nullptr;
+    ~PngFile() { if (p || info) png_destroy_read_struct(&p, &info, nullptr); if (fp) fclose(fp); }
+};
 static Tex loadTex(const char* path, unsigned char** keepPixels=nullptr, int* kw=nullptr, int* kh=nullptr){
-    Tex t; FILE* fp=fopen(path,"rb"); if(!fp){ printf("[gl] missing %s\n",path); return t; }
-    png_structp p=png_create_read_struct(PNG_LIBPNG_VER_STRING,0,0,0); png_infop info=png_create_info_struct(p);
-    if(setjmp(png_jmpbuf(p))){ fclose(fp); return t; }
-    png_init_io(p,fp); png_read_png(p,info,PNG_TRANSFORM_EXPAND|PNG_TRANSFORM_GRAY_TO_RGB,0);
-    int w=png_get_image_width(p,info),h=png_get_image_height(p,info),ch=png_get_channels(p,info);
-    png_bytepp rows=png_get_rows(p,info);
-    unsigned char* px=(unsigned char*)malloc(w*h*4);
+    Tex t;
+    PngFile pf;
+    pf.fp = fopen(path,"rb"); if(!pf.fp){ printf("[gl] missing %s\n",path); return t; }
+    pf.p = png_create_read_struct(PNG_LIBPNG_VER_STRING,0,0,0);
+    pf.info = png_create_info_struct(pf.p);
+    if(setjmp(png_jmpbuf(pf.p))) return t;   // RAII destructor handles cleanup
+    png_init_io(pf.p, pf.fp); png_read_png(pf.p, pf.info, PNG_TRANSFORM_EXPAND|PNG_TRANSFORM_GRAY_TO_RGB,0);
+    int w=png_get_image_width(pf.p, pf.info),h=png_get_image_height(pf.p, pf.info),ch=png_get_channels(pf.p, pf.info);
+    png_bytepp rows=png_get_rows(pf.p, pf.info);
+    unsigned char* px=(unsigned char*)malloc((size_t)w*h*4);
+    if(!px) return t;
     for(int y=0;y<h;y++)for(int x=0;x<w;x++){unsigned char*s=&rows[y][x*ch];unsigned char*d=&px[(y*w+x)*4];
         d[0]=s[0];d[1]=ch>1?s[1]:s[0];d[2]=ch>2?s[2]:s[0];d[3]=ch>3?s[3]:255;}
-    png_destroy_read_struct(&p,&info,0); fclose(fp);
     glGenTextures(1,&t.id); glBindTexture(GL_TEXTURE_2D,t.id);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE); glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
@@ -937,7 +953,8 @@ int main(int argc,char** argv){
 
     if(playtest){
         // Automated QA: drive the REAL stepPhysics/streaming/raycast through scenarios; assert invariants.
-        FILE* rep=fopen("/home/hex/Minecraft/minecraft/playtest_report.txt","w");
+        std::string repPath = std::string(outputDir()) + "/playtest_report.txt";
+        FILE* rep=fopen(repPath.c_str(),"w");
         int issues=0; size_t maxChunks=0;
         auto chk=[&](bool ok,const char* msg){ if(!ok){ issues++; fprintf(rep,"  !! FAIL: %s\n",msg); printf("[playtest] FAIL: %s\n",msg);} };
         auto bad=[&](){ return std::isnan(pl.x)||std::isnan(pl.y)||std::isnan(pl.z)||std::isinf(pl.y); };
@@ -1006,10 +1023,11 @@ int main(int argc,char** argv){
         const int FPS=30; const int NF=FPS*15;            // ~15s
         glReadBuffer(GL_BACK);
         char cmd[640];
+        std::string mp4Path = std::string(outputDir()) + "/gameplay.mp4";
         snprintf(cmd,sizeof cmd,
             "ffmpeg -y -loglevel error -f rawvideo -pixel_format rgb24 -video_size %dx%d -framerate %d "
             "-i - -vf vflip -c:v libx264 -pix_fmt yuv420p -preset veryfast "
-            "/home/hex/Minecraft/minecraft/gameplay.mp4", W,H,FPS);
+            "%s", W,H,FPS, mp4Path.c_str());
         FILE* ff=popen(cmd,"w"); if(!ff){ printf("[video] ffmpeg pipe failed\n"); return 1; }
         std::vector<unsigned char> px((size_t)W*H*3);
         auto emit=[&](){ glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,px.data()); fwrite(px.data(),1,(size_t)W*H*3,ff); };
@@ -1061,9 +1079,13 @@ int main(int argc,char** argv){
         }
         pclose(ff);
         printf("[video] wrote gameplay.mp4 — building gif...\n");
-        system("ffmpeg -y -loglevel error -i /home/hex/Minecraft/minecraft/gameplay.mp4 "
-               "-vf \"fps=15,scale=720:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse\" "
-               "/home/hex/Minecraft/minecraft/gameplay.gif");
+        std::string gifPath = std::string(outputDir()) + "/gameplay.gif";
+        char gifCmd[640];
+        snprintf(gifCmd, sizeof(gifCmd),
+            "ffmpeg -y -loglevel error -i \"%s\" "
+            "-vf \"fps=15,scale=720:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse\" "
+            "\"%s\"", mp4Path.c_str(), gifPath.c_str());
+        int gifRet = system(gifCmd);
         printf("[video] wrote gameplay.mp4 + gameplay.gif\n");
         return 0;
     }

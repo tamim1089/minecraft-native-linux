@@ -27,10 +27,17 @@ struct WinFind : WinHandleBase {
     ~WinFind() override { if (dir) ::closedir(dir); }
 };
 
-// Narrow a wide path. Engine paths are ASCII/Latin-1; take the low byte of each wchar.
+// Narrow a wide path via wcrtomb (supports any wchar_t width).
 std::string narrow(LPCWSTR w) {
     std::string s;
-    if (w) for (; *w; ++w) s.push_back((char)(*w & 0xFF));
+    if (!w) return s;
+    mbstate_t state{};
+    char buf[MB_CUR_MAX];
+    for (; *w; ++w) {
+        size_t n = wcrtomb(buf, (wchar_t)*w, &state);
+        if (n == (size_t)-1) { s.push_back('?'); state = mbstate_t(); }
+        else s.append(buf, n);
+    }
     return s;
 }
 
@@ -52,7 +59,7 @@ int open_flags(DWORD access, DWORD disposition) {
 }
 
 HANDLE create_file(const std::string& path, DWORD access, DWORD disposition) {
-    int fd = ::open(path.c_str(), open_flags(access, disposition), 0644);
+        int fd = ::open(path.c_str(), open_flags(access, disposition), 0666);
     if (fd < 0) return INVALID_HANDLE_VALUE;
     WinFile* h = new WinFile();
     h->fd = fd;
@@ -179,14 +186,32 @@ BOOL GetFileAttributesExA(LPCSTR p, GET_FILEEX_INFO_LEVELS, LPVOID info)  { retu
 BOOL GetFileAttributesExW(LPCWSTR p, GET_FILEEX_INFO_LEVELS, LPVOID info) { return get_attr_ex(narrow(p), info); }
 BOOL  SetFileAttributesA(LPCSTR, DWORD)  { return TRUE; }
 BOOL  SetFileAttributesW(LPCWSTR, DWORD) { return TRUE; }
-BOOL  CreateDirectoryA(LPCSTR p, LPSECURITY_ATTRIBUTES)  { return (p && ::mkdir(p, 0755) == 0) ? TRUE : FALSE; }
-BOOL  CreateDirectoryW(LPCWSTR p, LPSECURITY_ATTRIBUTES) { std::string s = narrow(p); return ::mkdir(s.c_str(), 0755) == 0 ? TRUE : FALSE; }
+BOOL  CreateDirectoryA(LPCSTR p, LPSECURITY_ATTRIBUTES)  { return (p && ::mkdir(p, 0777) == 0) ? TRUE : FALSE; }
+BOOL  CreateDirectoryW(LPCWSTR p, LPSECURITY_ATTRIBUTES) { std::string s = narrow(p); return ::mkdir(s.c_str(), 0777) == 0 ? TRUE : FALSE; }
 BOOL  RemoveDirectoryA(LPCSTR p)  { return (p && ::rmdir(p) == 0) ? TRUE : FALSE; }
 BOOL  RemoveDirectoryW(LPCWSTR p) { std::string s = narrow(p); return ::rmdir(s.c_str()) == 0 ? TRUE : FALSE; }
 BOOL  DeleteFileA(LPCSTR p)  { return (p && ::unlink(p) == 0) ? TRUE : FALSE; }
 BOOL  DeleteFileW(LPCWSTR p) { std::string s = narrow(p); return ::unlink(s.c_str()) == 0 ? TRUE : FALSE; }
-BOOL  MoveFileA(LPCSTR a, LPCSTR b)   { return (a && b && ::rename(a, b) == 0) ? TRUE : FALSE; }
-BOOL  MoveFileW(LPCWSTR a, LPCWSTR b) { std::string sa = narrow(a), sb = narrow(b); return ::rename(sa.c_str(), sb.c_str()) == 0 ? TRUE : FALSE; }
+static BOOL move_file_impl(const std::string& a, const std::string& b) {
+    if (a.empty() || b.empty()) return FALSE;
+    if (::rename(a.c_str(), b.c_str()) == 0) return TRUE;
+    if (errno == EXDEV) {
+        // Cross-filesystem: copy + delete
+        int src = ::open(a.c_str(), O_RDONLY);
+        if (src < 0) return FALSE;
+        int dst = ::open(b.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        if (dst < 0) { ::close(src); return FALSE; }
+        char buf[65536]; ssize_t n;
+        while ((n = ::read(src, buf, sizeof(buf))) > 0)
+            if (::write(dst, buf, (size_t)n) != n) { ::close(src); ::close(dst); return FALSE; }
+        ::close(src); ::close(dst);
+        if (n < 0) return FALSE;
+        return ::unlink(a.c_str()) == 0 ? TRUE : FALSE;
+    }
+    return FALSE;
+}
+BOOL  MoveFileA(LPCSTR a, LPCSTR b)   { return move_file_impl(a ? a : "", b ? b : ""); }
+BOOL  MoveFileW(LPCWSTR a, LPCWSTR b) { return move_file_impl(narrow(a), narrow(b)); }
 
 static HANDLE find_first(const std::string& patternNarrow, std::string& name, DWORD& attr) {
     WinFind* h = new WinFind();

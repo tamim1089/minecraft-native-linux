@@ -11,13 +11,13 @@ A fully native Linux Minecraft implementation written in C++. Uses OpenGL for re
 
 ## Features
 
-- Full world generation — overworld, Nether, and The End with 30+ biomes
-- 100+ block types with correct simulation (redstone, pistons, water flow, fire spread)
-- Entity AI — animals, monsters, villagers, bosses (Ender Dragon, Wither)
+- Full world generation — overworld with 30+ biomes (Nether/The End engine code present, not wired in the port)
+- ~45 block types textured and rendered (100+ in engine; the visual renderer maps a subset; extend via `tileFor()` in `gl_main.cpp`)
+- Entity AI — animals, monsters, villagers (Ender Dragon/Wither code present, not wired in the port)
 - Survival and Creative modes
 - Crafting, smelting, enchanting, brewing
-- Multiplayer — local split-screen and LAN via the built-in authoritative server
-- Complete GUI — inventory, chests, crafting table, furnace, enchanting table, anvil, maps
+- Single-player with authoritative headless server (multiplayer/split-screen not yet wired in the port)
+- In-game HUD — crosshair, hotbar, coordinates, FPS counter (inventory/screen GUI present in engine, not wired in the port)
 - Day/night cycle, weather, lighting engine
 - NBT-based save format with chunk compression
 - Headless server mode — runs the world with no window, logs to stdout
@@ -68,10 +68,10 @@ play.sh                     Launcher script
 
 ## System requirements
 
-| | |
+| Component | Requirement |
 |---|---|
 | OS | 64-bit Linux with X11 |
-| GPU | OpenGL 3.3 or newer (Mesa, NVIDIA, AMD) |
+| GPU | OpenGL 2.1+ (compat profile); uses legacy fixed-function pipeline |
 | RAM | 512 MB minimum, 1 GB recommended |
 | Compiler | GCC 9+ or Clang 10+ |
 | CMake | 3.16+ |
@@ -149,7 +149,7 @@ Two binaries are produced:
 | `minecraft_gl` | `build-linux/minecraft_gl` | Full client with OpenGL window |
 | `minecraft_headless` | `build-linux/minecraft_headless` | Server only, no window |
 
-Build time is 3–5 minutes on a modern machine with `-j$(nproc)`. The build is silent by default (`-w` suppresses warnings during compilation).
+Build time is 3–5 minutes on a modern machine with `-j$(nproc)`.
 
 ---
 
@@ -191,7 +191,6 @@ The headless server generates a world, runs a 20 Hz tick loop, and prints engine
 | Scroll wheel | Cycle hotbar |
 | Left mouse button | Break block |
 | Right mouse button | Place block / use item |
-| `E` | Open inventory |
 | `Esc` | Pause / back |
 
 ---
@@ -233,7 +232,7 @@ The engine internally uses a set of threading, file, and utility APIs that are m
 
 - `win_threads.cpp` — `CreateThread`, `WaitForSingleObject`, `SetEvent`, `CRITICAL_SECTION` → `std::thread`, `std::mutex`, `std::condition_variable`
 - `win_files.cpp` — `FindFirstFile`, `FindNextFile`, `CreateFile`, `ReadFile`, `WriteFile`, `GetFileAttributes` → `opendir`, `readdir`, `open`, `read`, `write`, `stat`
-- `win_compat.cpp` — `QueryPerformanceCounter`, `QueryPerformanceFrequency`, `MultiByteToWideChar`, `WideCharToMultiByte`, and other miscellaneous stubs
+- `win_compat.cpp` — `QueryPerformanceCounter`, `QueryPerformanceFrequency`, timing, `VirtualAlloc`, system time, and other miscellaneous stubs
 
 ### port-src/
 
@@ -317,11 +316,11 @@ The chunk meshing thread may have failed silently. Check stdout for `[engine]` m
 
 The codebase is large (~1,500 files in `Minecraft.World` alone) so it helps to understand the general flow before making changes:
 
-1. `gl_engine.cpp:MinecraftWorld_Init()` — sets up the engine and generates the world
+1. `gl_engine.cpp:engine_boot()` — sets up the engine and generates the world
 2. `ServerLevel::tick()` — the main 20 Hz game loop tick
 3. `LevelChunk` — individual 16×16×128 chunk, holds block data and handles ticking
-4. `gl_engine.cpp:MinecraftWorld_MeshDirtyChunks()` — walks dirty chunks and builds vertex arrays
-5. `gl_main.cpp` — consumes those vertex arrays and submits them to OpenGL
+4. `gl_main.cpp::meshChunk()` — walks dirty chunks and builds geometry via display lists
+5. `gl_main.cpp::renderWorld()` — submits those display lists to OpenGL
 
 For entity behaviour, each mob has a class in `Minecraft.World/` (e.g. `Zombie.cpp`, `Creeper.cpp`) with a goal list set up in the constructor. Goals are in files ending in `Goal.cpp`.
 
@@ -331,4 +330,4 @@ For GUI changes, screens are in `Minecraft.Client/Common/UI/` and use the XUI fr
 
 ## License
 
-Source provided for educational and preservation purposes.
+Licensed under the [MIT License](LICENSE). Provided for educational and preservation purposes.
