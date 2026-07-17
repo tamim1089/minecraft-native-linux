@@ -9,6 +9,13 @@ static const char* outputDir() {
     const char* env = getenv("OUTPUT_DIR");
     return env ? env : ".";
 }
+// Resource directory: where terrain.png, font/default.png, gui/*.png live.
+static const char* resDir() {
+    const char* env = getenv("RES_DIR");
+    return env ? env : "Common/res";
+}
+static std::string resPath(const char* sub) { return std::string(resDir()) + "/" + sub; }
+#include <cstdint>
 #include <GL/glx.h>
 #include <GL/gl.h>
 #include <X11/Xlib.h>
@@ -16,7 +23,12 @@ static const char* outputDir() {
 #include <X11/extensions/XInput2.h>    // raw relative mouse (correct FPS look, no warp jitter)
 #include <png.h>
 #include <unistd.h>
+#include <signal.h>
 #include <sys/time.h>
+
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -27,8 +39,23 @@ static const char* outputDir() {
 #include "gl_engine.h"
 
 static int W=1280, H=720;
-static const int CH=128;
+static constexpr int CH=128;
+static constexpr float PLAYER_WIDTH=0.3f;
+static constexpr float PLAYER_HEIGHT=1.8f;
+static constexpr float STEP_HEIGHT=0.6f;
+static constexpr float REACH=5.0f;
+static constexpr int TICK_MS=50;
+static constexpr int FONT_CELL_W=8;
+static constexpr int FONT_CELL_H=8;
 static double g_lookDX=0, g_lookDY=0;   // accumulated raw mouse motion (XI2), applied per frame
+
+// SIGINT handler state — release X pointer grab so the desktop isn't left trapped.
+static Display* g_sig_dpy = nullptr;
+static Window   g_sig_win = 0;
+static void handle_sigint(int) {
+    if(g_sig_dpy){ XUngrabPointer(g_sig_dpy,CurrentTime); XUndefineCursor(g_sig_dpy,g_sig_win); XFlush(g_sig_dpy); }
+    _exit(128+SIGINT);
+}
 
 // ============================ textures ============================
 struct Tex { GLuint id=0; int w=0,h=0; };
@@ -64,7 +91,7 @@ static Tex loadTex(const char* path, unsigned char** keepPixels=nullptr, int* kw
     return t;
 }
 static void computeFontWidths(unsigned char* px,int w,int h){
-    int cw=w/16, chh=h/16;            // 8x8 cells for 128x128
+    int cw=w/16, chh=h/16;            // 8x8 cells (FONT_CELL_W/FONT_CELL_H) for 128x128
     for(int c=0;c<256;c++){
         int cx=(c%16)*cw, cy=(c/16)*chh; int maxx=0;
         for(int yy=0;yy<chh;yy++)for(int xx=0;xx<cw;xx++){
@@ -182,6 +209,8 @@ static void tileFor(int id,int face,int& col,int& row){
         case 82: col=8;row=4; break;                                     // clay
         case 83: col=9;row=4; break;                                     // sugar cane
         case 31: case 32: col=7;row=2; break;                            // tall grass / dead bush
+        case 121: col=15;row=10; break;                                  // end stone
+        case 172: if(face==3){col=14;row=2;} else if(face==2){col=3;row=3;} else {col=1;row=0;} break; // observer
         default: col=1;row=0; break;                                     // unknown -> stone
     }
 }
@@ -321,14 +350,14 @@ static void perspective(float fovy,float asp,float zn,float zf){
     glMatrixMode(GL_PROJECTION); glLoadMatrixf(m);
 }
 // player collision: AABB 0.6x1.8 centred on x,z; y is feet
-static const float PW=0.3f, PHh=1.8f;
+static const float PW=PLAYER_WIDTH, PHh=PLAYER_HEIGHT;
 static bool boxHitsWorld(float x,float y,float z){
     int x0=(int)floorf(x-PW),x1=(int)floorf(x+PW),y0=(int)floorf(y),y1=(int)floorf(y+PHh),z0=(int)floorf(z-PW),z1=(int)floorf(z+PW);
     for(int bx=x0;bx<=x1;bx++)for(int by=y0;by<=y1;by++)for(int bz=z0;bz<=z1;bz++)
         if(isSolidForPlayer(engine_getTile(bx,by,bz))) return true;
     return false;
 }
-static const float STEP=0.6f;   // Minecraft auto step-up height (slabs/snow/path/0.6 ledges)
+static const float STEP=STEP_HEIGHT;
 // climb the SMALLEST height (≤STEP) that clears, so stepping is smooth, not a 0.6 pop; refuse if none clears
 static bool stepUp(Player& p,float nx,float nz){
     if(!p.onGround) return false;
@@ -368,7 +397,7 @@ static void stepPhysics(Player& p,float fwd,float strafe,float up,bool jump,floa
 static inline bool selectable(int t){ return t!=0 && !isLiquid(t); }
 struct RayHit { bool hit=false; int hx,hy,hz, px,py,pz; };
 // Amanatides–Woo voxel DDA: exact block + the exact face neighbour for placement (~5 cell tests, not 167)
-static RayHit raycast(const Player& p,float reach=5.0f){
+static RayHit raycast(const Player& p,float reach=REACH){
     RayHit r; float dx,dy,dz; viewDir(p,dx,dy,dz);
     float ox=p.x, oy=p.y+1.62f, oz=p.z;
     int x=(int)floorf(ox), y=(int)floorf(oy), z=(int)floorf(oz);
@@ -457,18 +486,17 @@ static void buildChicken(const char* tex){
     g_models[ET_CHICKEN]=m;
 }
 static void initMobModels(){
-    buildQuadruped(ET_PIG,6,"Common/res/mob/pig.png");
-    buildQuadruped(ET_COW,12,"Common/res/mob/cow.png");
-    buildQuadruped(ET_SHEEP,12,"Common/res/mob/sheep.png");
-    buildQuadruped(ET_WOLF,8,"Common/res/mob/wolf.png");
-    buildChicken("Common/res/mob/chicken.png");
-    buildHumanoid(ET_VILLAGER,"Common/res/mob/char.png");
-    buildHumanoid(ET_ZOMBIE,"Common/res/mob/zombie.png");
-    buildHumanoid(ET_SKELETON,"Common/res/mob/skeleton.png");
-    buildCreeper("Common/res/mob/creeper.png");
-    buildSpider("Common/res/mob/spider.png");
-    for(auto&kv:g_models) g_mobTex[kv.first]=loadTex(kv.second.tex);
-    g_sheepWoolTex=loadTex("Common/res/mob/sheep_fur.png").id;   // wool overlay layer
+    buildQuadruped(ET_PIG,6,resPath("mob/pig.png").c_str());
+    buildQuadruped(ET_COW,12,resPath("mob/cow.png").c_str());
+    buildQuadruped(ET_SHEEP,12,resPath("mob/sheep.png").c_str());
+    buildQuadruped(ET_WOLF,8,resPath("mob/wolf.png").c_str());
+    buildChicken(resPath("mob/chicken.png").c_str());
+    buildHumanoid(ET_VILLAGER,resPath("mob/char.png").c_str());
+    buildHumanoid(ET_ZOMBIE,resPath("mob/zombie.png").c_str());
+    buildHumanoid(ET_SKELETON,resPath("mob/skeleton.png").c_str());
+    buildCreeper(resPath("mob/creeper.png").c_str());
+    buildSpider(resPath("mob/spider.png").c_str());
+    g_sheepWoolTex=loadTex(resPath("mob/sheep_fur.png").c_str()).id;
 }
 
 // One textured quad with the Polygon.cpp corner mapping + 0.1-texel inset (64x32 atlas).
@@ -727,6 +755,8 @@ static void drawLogo(bool splash,float pulse){
 
 enum State { TITLE, OPTIONS, PLAY };
 
+AppStub app;  // stub for World-library cross-dependency
+
 // ============================ main ============================
 static long long nowms(){ struct timeval tv; gettimeofday(&tv,0); return (long long)tv.tv_sec*1000+tv.tv_usec/1000; }
 
@@ -742,15 +772,19 @@ int main(int argc,char** argv){
     int sx,sy,sz; engine_spawn(&sx,&sy,&sz); engine_spawnDemoMobs(sx,sy,sz);
 
     Display* dpy=XOpenDisplay(0); if(!dpy){printf("no X\n");return 1;}
+    g_sig_dpy=dpy;
+    signal(SIGINT,handle_sigint);
     int attrs[]={GLX_RGBA,GLX_DEPTH_SIZE,24,GLX_DOUBLEBUFFER,None};
     XVisualInfo* vi=glXChooseVisual(dpy,DefaultScreen(dpy),attrs); if(!vi){printf("no visual\n");return 1;}
     Window root=RootWindow(dpy,vi->screen); Colormap cmap=XCreateColormap(dpy,root,vi->visual,AllocNone);
     XSetWindowAttributes swa; swa.colormap=cmap;
     swa.event_mask=ExposureMask|KeyPressMask|KeyReleaseMask|ButtonPressMask|StructureNotifyMask|FocusChangeMask;
     Window win=XCreateWindow(dpy,root,0,0,W,H,0,vi->depth,InputOutput,vi->visual,CWColormap|CWEventMask,&swa);
+    g_sig_win=win;
     Atom wmDelete=XInternAtom(dpy,"WM_DELETE_WINDOW",False); XSetWMProtocols(dpy,win,&wmDelete,1);
     XStoreName(dpy,win,"Minecraft (native Linux)"); XMapWindow(dpy,win);
-    GLXContext ctx=glXCreateContext(dpy,vi,0,GL_TRUE); glXMakeCurrent(dpy,win,ctx);
+    GLXContext ctx=glXCreateContext(dpy,vi,0,GL_TRUE); if(!ctx){printf("[gl] no GL context\n");return 1;}
+    if(!glXMakeCurrent(dpy,win,ctx)){ printf("[gl] makeCurrent failed\n"); return 1; }
     printf("[gl] %s | %s\n",(const char*)glGetString(GL_VERSION),(const char*)glGetString(GL_RENDERER));
     // invisible cursor for capture
     Pixmap bm=XCreatePixmap(dpy,win,1,1,1); XColor bc; memset(&bc,0,sizeof bc);
@@ -768,12 +802,12 @@ int main(int argc,char** argv){
     }
     if(!xiOK) printf("[gl] WARNING: XInput2 unavailable, mouse-look degraded\n");
 
-    TEX_TERRAIN=loadTex("Common/res/terrain.png");
-    unsigned char* fpx=nullptr; int fw,fh; TEX_FONT=loadTex("Common/res/font/default.png",&fpx,&fw,&fh);
+    TEX_TERRAIN=loadTex(resPath("terrain.png").c_str());
+    unsigned char* fpx=nullptr; int fw,fh; TEX_FONT=loadTex(resPath("font/default.png").c_str(),&fpx,&fw,&fh);
     if(fpx){ computeFontWidths(fpx,fw,fh); free(fpx); }
-    TEX_LOGO=loadTex("Common/res/gui/logo.png");   // clean single-line logo (not the 2-row mclogo)
-    TEX_GUI=loadTex("Common/res/gui/gui.png");
-    TEX_ICONS=loadTex("Common/res/gui/icons.png");
+    TEX_LOGO=loadTex(resPath("gui/logo.png").c_str());
+    TEX_GUI=loadTex(resPath("gui/gui.png").c_str());
+    TEX_ICONS=loadTex(resPath("gui/icons.png").c_str());
     initMobModels();
 
     glEnable(GL_DEPTH_TEST); glEnable(GL_CULL_FACE); glCullFace(GL_BACK); glFrontFace(GL_CCW);
@@ -1030,7 +1064,8 @@ int main(int argc,char** argv){
             "%s", W,H,FPS, mp4Path.c_str());
         FILE* ff=popen(cmd,"w"); if(!ff){ printf("[video] ffmpeg pipe failed\n"); return 1; }
         std::vector<unsigned char> px((size_t)W*H*3);
-        auto emit=[&](){ glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,px.data()); fwrite(px.data(),1,(size_t)W*H*3,ff); };
+        auto emit=[&](){ glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,px.data());
+            if(fwrite(px.data(),1,(size_t)W*H*3,ff) != (size_t)W*H*3) printf("[video] ffmpeg write short\n"); };
         layoutMenu();
         // --- title segment (~2s) with hover sweeping onto Play ---
         int titleF=FPS*2;
@@ -1060,13 +1095,8 @@ int main(int argc,char** argv){
                 pl.pitch= -6 + sinf(tt*0.9f)*9.0f;
                 fwd=(sinf(tt*0.45f)>-0.25f)?1.0f:0.0f; strafe=sinf(tt*0.7f)*0.35f;
             }
-            float yr=pl.yaw*M_PI/180; float fxv=-sinf(yr),fzv=-cosf(yr),rxv=cosf(yr),rzv=-sinf(yr);
-            float acc=0.09f;
-            pl.vx+=(fxv*fwd+rxv*strafe)*acc; pl.vz+=(fzv*fwd+rzv*strafe)*acc;
-            pl.vy-=0.08f; pl.vy*=0.98f; pl.onGround=false;
-            moveAxis(pl,pl.vx,0,0); moveAxis(pl,0,0,pl.vz); moveAxis(pl,0,pl.vy,0);
-            pl.vx*=0.60f; pl.vz*=0.60f;
-            if(pl.onGround && fwd>0 && fabsf(pl.vx)+fabsf(pl.vz)<0.02f) pl.vy=0.42f;  // auto-jump if stuck
+            bool autoJump = pl.onGround && fwd>0 && fabsf(pl.vx)+fabsf(pl.vz) < 0.02f;
+            stepPhysics(pl, fwd, strafe, 0, autoJump, 1, sy);
             engine_tick();
             int ccx=((int)floorf(pl.x))>>4, ccz=((int)floorf(pl.z))>>4; streamChunks(ccx,ccz,6);
             g_look=raycast(pl);
@@ -1077,7 +1107,8 @@ int main(int argc,char** argv){
             renderWorld(pl,engine_dayLight()); drawHUD(pl,FPS);
             emit(); glXSwapBuffers(dpy,win);
         }
-        pclose(ff);
+        int pipeRet = pclose(ff);
+        if(pipeRet) printf("[video] ffmpeg pipe exit code %d\n", pipeRet);
         printf("[video] wrote gameplay.mp4 — building gif...\n");
         std::string gifPath = std::string(outputDir()) + "/gameplay.gif";
         char gifCmd[640];
@@ -1086,6 +1117,7 @@ int main(int argc,char** argv){
             "-vf \"fps=15,scale=720:-1:flags=lanczos,split[s0][s1];[s0]palettegen[p];[s1][p]paletteuse\" "
             "\"%s\"", mp4Path.c_str(), gifPath.c_str());
         int gifRet = system(gifCmd);
+        if(gifRet) printf("[video] gif generation exit code %d\n", gifRet);
         printf("[video] wrote gameplay.mp4 + gameplay.gif\n");
         return 0;
     }
@@ -1099,13 +1131,14 @@ int main(int argc,char** argv){
             drawButton(bPlay,false);drawButton(bOpt,false);drawButton(bQuit,false);
             drawText("native Linux port - real ported engine",W/2-200,H-30,1.5f,0.8f,0.85f,0.9f);
             end2D(); glXSwapBuffers(dpy,win);}
-        savePNG: ; {
+        {
             std::vector<unsigned char> px(W*H*3); glReadPixels(0,0,W,H,GL_RGB,GL_UNSIGNED_BYTE,px.data());
-            FILE* fp=fopen("frame_title.png","wb"); png_structp p=png_create_write_struct(PNG_LIBPNG_VER_STRING,0,0,0);
+            std::string pngPath = std::string(outputDir()) + "/frame_title.png";
+            FILE* fp=fopen(pngPath.c_str(),"wb"); png_structp p=png_create_write_struct(PNG_LIBPNG_VER_STRING,0,0,0);
             png_infop info=png_create_info_struct(p); png_init_io(p,fp);
             png_set_IHDR(p,info,W,H,8,PNG_COLOR_TYPE_RGB,PNG_INTERLACE_NONE,PNG_COMPRESSION_TYPE_DEFAULT,PNG_FILTER_TYPE_DEFAULT);
             png_write_info(p,info); std::vector<png_bytep> r(H); for(int y=0;y<H;y++)r[y]=&px[(H-1-y)*W*3];
-            png_write_image(p,r.data()); png_write_end(p,0); png_destroy_write_struct(&p,&info); fclose(fp); printf("[gl] wrote frame_title.png\n");
+            png_write_image(p,r.data()); png_write_end(p,0); png_destroy_write_struct(&p,&info); fclose(fp); printf("[gl] wrote %s\n", pngPath.c_str());
         }
         // gameplay frame with HUD
         engine_setTime(1000); for(int t=0;t<8;t++) engine_tick();   // morning: sun low + visible
@@ -1156,8 +1189,10 @@ int main(int argc,char** argv){
                 continue;
             }
             if(e.type==ClientMessage && (Atom)e.xclient.data.l[0]==wmDelete){ setCapture(false); running=false; }
-            else if(e.type==FocusOut){ memset(keys,0,sizeof keys); kShift=kCtrl=false;   // don't walk forever on alt-tab
-                if(captured){ setCapture(false); st=TITLE; } }                            // and never trap the cursor
+            else if(e.type==DestroyNotify){ setCapture(false); running=false; }
+            else if(e.type==Expose){ /* next frame redraws */ }
+            else if(e.type==FocusOut){ memset(keys,0,sizeof keys); kShift=kCtrl=false;
+                if(captured){ setCapture(false); st=TITLE; } }
             else if(e.type==ConfigureNotify){ W=e.xconfigure.width; H=e.xconfigure.height; }
             else if(e.type==KeyPress||e.type==KeyRelease){
                 KeySym ks=XLookupKeysym(&e.xkey,0); bool down=(e.type==KeyPress);
@@ -1204,20 +1239,24 @@ int main(int argc,char** argv){
         }
 
         if(st==PLAY){
-            // mouse look — poll absolute pointer, take delta from window centre, warp back.
-            // (warp works under XWayland where XI2 raw relative motion does NOT — that was the dead-mouse bug.)
             if(captured){
+                // Primary: XI2 raw relative motion (pre-acceleration, no warp feedback loop)
+                if(g_lookDX != 0 || g_lookDY != 0){
+                    pl.yaw  -= (float)g_lookDX * OPT.sens;
+                    pl.pitch-= (float)g_lookDY * OPT.sens;
+                }
+                // Fallback: XQueryPointer polling (works on XWayland where XI2 doesn't)
                 Window rr,cr; int rx,ry,wx,wy; unsigned mb; int cx=W/2,cy=H/2;
                 if(XQueryPointer(dpy,win,&rr,&cr,&rx,&ry,&wx,&wy,&mb)){
                     float ddx=(float)(wx-cx), ddy=(float)(wy-cy);
-                    if(fabsf(ddx)<400.0f && fabsf(ddy)<400.0f){           // reject the big jump on (re)capture
+                    if(fabsf(ddx)<400.0f && fabsf(ddy)<400.0f){
                         pl.yaw  -= ddx*OPT.sens;
                         pl.pitch-= ddy*OPT.sens;
-                        if(pl.pitch>89)pl.pitch=89; if(pl.pitch<-89)pl.pitch=-89;
-                        if(pl.yaw>360)pl.yaw-=360; if(pl.yaw<0)pl.yaw+=360;
                     }
                     if(wx!=cx||wy!=cy){ XWarpPointer(dpy,None,win,0,0,0,0,cx,cy); XSync(dpy,False); }
                 }
+                if(pl.pitch>89)pl.pitch=89; if(pl.pitch<-89)pl.pitch=-89;
+                if(pl.yaw>360)pl.yaw-=360; if(pl.yaw<0)pl.yaw+=360;
             }
             g_lookDX=g_lookDY=0;
             // movement input -> world space
@@ -1231,7 +1270,7 @@ int main(int argc,char** argv){
             (void)fxv;(void)fzv;(void)rxv;(void)rzv;   // movement math now lives in stepPhysics
             // fixed-step physics (single source of truth)
             long long t=nowms(); int steps=0;
-            while(t-lastTick>=50 && steps<5){ lastTick+=50; steps++;
+            while(t-lastTick>=TICK_MS && steps<5){ lastTick+=TICK_MS; steps++;
                 stepPhysics(pl, fwd,strafe,up, keys[XK_space], sprint, sy);
                 engine_tick();
             }

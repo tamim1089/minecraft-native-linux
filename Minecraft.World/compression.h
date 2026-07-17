@@ -1,7 +1,7 @@
 #pragma once
 #include "FileHeader.h"
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Linux/DurangoExtras/xcompress.h"
 #endif
 

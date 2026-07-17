@@ -3,7 +3,7 @@
 // are changed infrequently
 #pragma once
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #else
 #define AUTO_VAR(_var, _val) auto _var = _val
 #endif
@@ -25,7 +25,7 @@ typedef unsigned __int64 __uint64;
 #endif // _LINUX
 #endif
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include <xdk.h>
 #include <wrl.h>
 #include <d3d11_x.h>
@@ -40,7 +40,7 @@ using namespace DirectX;
 #include <stdlib.h>
 #endif
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
@@ -50,7 +50,7 @@ using namespace DirectX;
 #include <message_dialog.h>
 #endif
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include <xtl.h>
 #include <xuiapp.h>
 #include <xact3.h>
@@ -60,7 +60,7 @@ typedef XNKID SessionID;
 typedef UID GameSessionUID;
 #endif
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include <cell/l10n.h>
 #include <cell/pad.h>
 #include <cell/cell_fs.h>
@@ -76,6 +76,10 @@ typedef UID GameSessionUID;
 #include "Ps3Stubs.h"
 #include "PS3Maths.h"
 
+#elif defined(__LINUX_PORT__)
+#include <unordered_map>
+#include <unordered_set>
+#include <vector>
 #elif defined _LINUX
 #include <unordered_map>
 #include <unordered_set>
@@ -116,12 +120,14 @@ typedef UID GameSessionUID;
 #include <exception>
 
 #include <assert.h>
-#endif
 
-#ifndef _LINUX
+#if defined(_WINDOWS64) && !defined(__LINUX_PORT__)
 #include "extraX64.h"
-#else
+#elif defined(_LINUX)
+#if !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Linux/Network/extra.h"
+#endif
+#include "extraX64.h"
 #endif
 
 #include "Definitions.h"
@@ -149,12 +155,14 @@ typedef UID GameSessionUID;
 
 void MemSect(int sect);
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Linux/4JLibs/inc/4J_Profile.h"
 #include "../Minecraft.Client/Linux/4JLibs/inc/4J_Render.h"
 #include "../Minecraft.Client/Linux/4JLibs/inc/4J_xtms.h"
 #include "../Minecraft.Client/Linux/4JLibs/inc/4J_Storage.h"
 #include "../Minecraft.Client/Linux/4JLibs/inc/4J_Input.h"
+#elif defined(__LINUX_PORT__)
+/* 4J console-lib headers not available on native Linux */
 #elif defined (_LINUX)
 #include "../Minecraft.Client/Linux/4JLibs/inc/4J_Profile.h"
 #include "../Minecraft.Client/Linux/4JLibs/inc/4J_Render.h"
@@ -182,31 +190,42 @@ void MemSect(int sect);
 #include "../Minecraft.Client/Linux/4JLibs/inc/4J_Input.h"
 #endif
 
+#if !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Common/Network/GameNetworkManager.h"
+#endif
 
 // #ifdef _LINUX
+#if !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Common/UI/UIEnums.h"
+#endif
 #include "../Minecraft.Client/Common/App_Defines.h"
 #include "../Minecraft.Client/Common/App_enums.h"
+#if !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Common/Tutorial/TutorialEnum.h"
 #include "../Minecraft.Client/Common/App_structs.h"
+#endif
 //#endif
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Common/XUI/XUI_Helper.h"
 #include "../Minecraft.Client/Common/XUI/XUI_Scene_Base.h"
 #endif
+#if !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Common/Consoles_App.h"
+#endif
 #include "../Minecraft.Client/Common/Minecraft_Macros.h"
 #include "../Minecraft.Client/Common/Colours/ColourTable.h"
 
 #include "../Minecraft.Client/Common/BuildVer.h"
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Linux/Xbox_App.h"
 #include "../Minecraft.Client/GameMedia/strings.h"
 #include "../Minecraft.Client/Linux/Sentient/SentientTelemetryCommon.h"
 #include "../Minecraft.Client/Linux/Sentient/MinecraftTelemetry.h"
+
+#elif defined(__LINUX_PORT__)
+/* no platform App headers on native Linux */
 
 #elif defined (_LINUX)
 #include "../Minecraft.Client/Linux/PS3_App.h"
@@ -237,10 +256,14 @@ void MemSect(int sect);
 #include "../Minecraft.Client/Linux/Sentient/MinecraftTelemetry.h"
 #endif
 
+#if !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Common/DLC/DLCSkinFile.h"
+#endif
 #include "../Minecraft.Client/Common/Console_Awards_enum.h"
 #include "../Minecraft.Client/Common/Potion_Macros.h"
 #include "../Minecraft.Client/Common/Console_Debug_enum.h"
 #include "../Minecraft.Client/Common/GameRules/ConsoleGameRulesConstants.h"
 #include "../Minecraft.Client/Common/GameRules/ConsoleGameRules.h"
+#if !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Common/Telemetry/TelemetryManager.h"
+#endif

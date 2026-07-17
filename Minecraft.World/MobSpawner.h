@@ -2,7 +2,7 @@
 
 #include "Mob.h"
 
-#ifdef _LINUX
+#if (defined _LINUX) && !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Linux/LinuxExtras/CustomMap.h"
 #endif
 
@@ -18,7 +18,7 @@ protected:
 	static TilePos getRandomPosWithin(Level *level, int cx, int cz);
 
 private:
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 	// AP - See CustomMap.h for an explanation of this
 	static CustomMap chunksToPoll;
 #else

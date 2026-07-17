@@ -3,8 +3,8 @@
 
 #include "CThread.h"
 #ifdef _LINUX
-#include "../Minecraft.Client/Linux/LinuxExtras/ShutdownManager.h"
-#include "../Minecraft.Client/Linux/LinuxExtras/LinuxTLSStorage.h"
+// #include "../Minecraft.Client/Linux/LinuxExtras/ShutdownManager.h"
+// #include "../Minecraft.Client/Linux/LinuxExtras/LinuxTLSStorage.h"
 
 // AP - this comes from the low level user_malloc.c file used to overide the default memory functions. These must be called when a thread is started/stopped
 extern "C" {
@@ -12,7 +12,7 @@ extern void user_registerthread();
 extern void user_removethread();
 }
 #else
-#include "../Minecraft.Client/Linux/PS3Extras/ShutdownManager.h"
+// #include "../Minecraft.Client/Linux/PS3Extras/ShutdownManager.h"
 
 #endif
 

@@ -48,7 +48,7 @@ class Minecraft
 {
 private:
 	enum  OS{
-		linux, solaris, windows, macos, unknown, linux
+		linux, solaris, windows, macos, unknown
 	};
 
 public:

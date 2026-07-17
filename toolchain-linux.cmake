@@ -12,3 +12,7 @@ set(CMAKE_CXX_COMPILER g++)
 
 # Flag consumed by CMakeLists.txt to select the headless-Linux configuration.
 set(LINUX_PORT ON CACHE BOOL "Build the native-Linux headless port" FORCE)
+
+# Also define __LINUX_PORT__ so stdafx.h can distinguish Linux-port from
+# platform checks in the original codebase (both historically use _LINUX).
+add_definitions(-D__LINUX_PORT__)

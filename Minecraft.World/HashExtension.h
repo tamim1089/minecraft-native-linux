@@ -1,5 +1,5 @@
 #pragma once
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 //using namespace std;
 namespace std
 {

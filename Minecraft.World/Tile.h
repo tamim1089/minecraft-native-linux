@@ -26,6 +26,7 @@ class RepeaterTile;
 class CauldronTile;
 class TripWireSourceTile;
 class Random;
+class ObserverTile;
 class HitResult;
 class Level;
 
@@ -313,6 +314,7 @@ public:
 	static const int stairs_quartz_Id = 156;
 
 	static const int woolCarpet_Id = 171;
+	static const int observer_Id = 172;
 
 
     static Tile *rock;
@@ -398,6 +400,7 @@ public:
     static Tile *cactus;
     static Tile *clay;
     static Tile *reeds;
+    static ObserverTile *observer;
     static Tile *recordPlayer;
     static Tile *fence;
     static Tile *pumpkin;

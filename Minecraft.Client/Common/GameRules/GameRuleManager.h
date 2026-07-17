@@ -17,7 +17,7 @@ class WstringLookup;
 
 #define GAME_RULE_SAVENAME L"requiredGameRules.grf"
 
-// #define LEVEL_GEN_ID int
+typedef int LEVEL_GEN_ID;
 #define LEVEL_GEN_ID_NULL 0
 
 class GameRuleManager

@@ -36,11 +36,19 @@ int port_QueryPerformanceFrequency(union _LARGE_INTEGER* p) {
     return 1;
 }
 
-// committed, zeroed anonymous mapping. TODO(port): honor MEM_RESERVE/MEM_COMMIT separately
-// if a save-format path relies on reserve-then-commit-subregion semantics. ----
-LPVOID VirtualAlloc(LPVOID /*addr*/, SIZE_T size, DWORD /*allocType*/, DWORD /*protect*/) {
+LPVOID VirtualAlloc(LPVOID addr, SIZE_T size, DWORD allocType, DWORD protect) {
     if (size == 0) return nullptr;
-    void* p = mmap(nullptr, size, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+    // Map PAGE_* protection flags to mmap prot.
+    int prot = PROT_NONE;
+    if (protect & (PAGE_READWRITE | PAGE_READONLY)) prot = PROT_READ;
+    if (protect & PAGE_READWRITE) prot |= PROT_WRITE;
+    // MEM_RESERVE reserves address space (PROT_NONE); MEM_COMMIT backs it.
+    // When both are given (the common case), commit immediately.
+    bool commit = (allocType & MEM_COMMIT) != 0;
+    if (!commit) prot = PROT_NONE;    // reserve-only
+    int flags = MAP_PRIVATE | MAP_ANONYMOUS;
+    void* hint = (allocType & MEM_RESERVE) && !addr ? nullptr : addr;
+    void* p = mmap(hint, size, prot, flags, -1, 0);
     return (p == MAP_FAILED) ? nullptr : p;
 }
 

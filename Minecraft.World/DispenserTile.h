@@ -4,6 +4,7 @@
 class Player;
 class Mob;
 class ChunkRebuildData;
+class DispenserTileEntity;
 class DispenserTile : public EntityTile
 {
 	friend class Tile;

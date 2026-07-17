@@ -71,9 +71,7 @@ include_directories(
     "${WORLD_DIR}"
     "${WORLD_DIR}/x64headers"
     "${ROOT_DIR}"
-    "${CLIENT_DIR}/Windows64/4JLibs/inc"
-    "${LIBS_WIN64}/Iggy/include"
-    "${LIBS_WIN64}/Miles/include"
+
     "${CLIENT_DIR}/Common"
     "${CLIENT_DIR}/Common/Network"
     "${CLIENT_DIR}/Common/Audio"

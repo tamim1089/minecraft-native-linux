@@ -11,11 +11,14 @@
 
 #define MULTITHREAD_ENABLE
 
+#ifndef __LINUX_PORT__
 typedef unsigned char byte;
 
 const int XUSER_INDEX_ANY = 255;
 const int XUSER_INDEX_FOCUS = 254;
+#endif
 
+#if !defined(__LINUX_PORT__)
 #ifdef _LINUX
 const int XUSER_MAX_COUNT = 1;
 const int MINECRAFT_NET_MAX_PLAYERS = 4;
@@ -23,10 +26,11 @@ const int MINECRAFT_NET_MAX_PLAYERS = 4;
 const int XUSER_MAX_COUNT = 4;
 const int MINECRAFT_NET_MAX_PLAYERS = 8;
 #endif
+#endif
 
 
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include <net.h>
 #include <np/np_npid.h>
 #include <user_service.h>
@@ -34,6 +38,9 @@ const int MINECRAFT_NET_MAX_PLAYERS = 8;
 #include "../../Minecraft.Client/Linux/Network/SQRNetworkManager.h"
 typedef SQRNetworkManager::SessionID SessionID;
 typedef SQRNetworkManager::PresenceSyncInfo INVITE_INFO;
+
+#elif defined(_LINUX) && defined(__LINUX_PORT__)
+// Types provided by win_types.h
 
 #elif defined _LINUX		// defined in the profile lib
 #include <np.h>
@@ -312,11 +319,23 @@ public:
 };
 
 #ifdef _LINUX
+#if defined(__LINUX_PORT__)
+// No PIX profiling on native Linux
+#define PIXBeginEvent(a, ...)
+#define PIXEndEvent()
+#define PIXSetMarker(a, ...)
+#define PIXReportCounter(a, ...)
+#define PIXBeginNamedEvent(a, b, ...)
+#define PIXEndNamedEvent()
+#define PIXSetMarkerDeprecated(a, b, ...)
+#define PIXAddNamedCounter(a, b)
+#else
 // We don't want to be doing string conversions at runtime for timing instrumentation, so do this instead
 #define PIXBeginNamedEvent(a, b, ...) PIXBeginEvent(a,L ## b, __VA_ARGS__)
 #define PIXEndNamedEvent() PIXEndEvent()
 #define PIXSetMarkerDeprecated(a, b, ...) PIXSetMarker(a, L ## b, __VA_ARGS__)
 #define PIXAddNamedCounter(a, b) PIXReportCounter( L ## b, a)
+#endif
 #else
 void PIXAddNamedCounter(int a, char *b, ...);
 void PIXBeginNamedEvent(int a, char *b, ...);

@@ -4,8 +4,10 @@ using namespace std;
 #include <qnet.h>
 #include "../../../Minecraft.World/CThread.h"
 #include "NetworkPlayerInterface.h"
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include "../../Linux/Network/PlatformNetworkManagerXbox.h"
+#elif defined(__LINUX_PORT__)
+#include "PlatformNetworkManagerStub.h"
 #elif defined _LINUX || defined _LINUX || defined _LINUX
 #include "../../Common/Network/Sony/PlatformNetworkManagerSony.h"
 #elif defined _LINUX
@@ -15,7 +17,7 @@ using namespace std;
 #endif
 #include "SessionInfo.h"
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include "../../Linux/Network/OnlineSubscriptionWrapper.h"
 #endif
 

@@ -15,6 +15,7 @@
 #include "net.minecraft.world.h"
 #include "net.minecraft.h"
 #include "Tile.h"
+#include "ObserverTile.h"
 
 wstring Tile::TILE_DESCRIPTION_PREFIX = L"Tile."; 
 
@@ -126,6 +127,7 @@ Tile *Tile::snow = NULL;
 Tile *Tile::cactus = NULL;
 Tile *Tile::clay = NULL;
 Tile *Tile::reeds = NULL;
+ObserverTile *Tile::observer = NULL;
 Tile *Tile::recordPlayer = NULL;
 Tile *Tile::fence = NULL;
 Tile *Tile::pumpkin = NULL;
@@ -343,6 +345,7 @@ void Tile::staticCtor()
 	Tile::ice = (new IceTile(79))								->setDestroyTime(0.5f)->setLightBlock(3)->setSoundType(Tile::SOUND_GLASS)->setTextureName(L"ice")->setDescriptionId(IDS_TILE_ICE)->setUseDescriptionId(IDS_DESC_ICE);
 	Tile::cactus = (new CactusTile(81))							->setDestroyTime(0.4f)->setSoundType(Tile::SOUND_CLOTH)->setTextureName(L"cactus")->setDescriptionId(IDS_TILE_CACTUS)->setUseDescriptionId(IDS_DESC_CACTUS)->disableMipmap();
 	Tile::reeds = (new ReedTile(83))							->setDestroyTime(0.0f)->setSoundType(Tile::SOUND_GRASS)->setTextureName(L"reeds")->setDescriptionId(IDS_TILE_REEDS)->setNotCollectStatistics()->setUseDescriptionId(IDS_DESC_REEDS)->disableMipmap();
+	Tile::observer = (ObserverTile*)(new ObserverTile(172))->setDestroyTime(3.5f)->setSoundType(Tile::SOUND_STONE);
 	Tile::recordPlayer = (new RecordPlayerTile(84))				->setDestroyTime(2.0f)->setExplodeable(10)->setSoundType(Tile::SOUND_STONE)->setTextureName(L"jukebox")->setDescriptionId(IDS_TILE_JUKEBOX)->sendTileData()->setUseDescriptionId(IDS_DESC_JUKEBOX);
 	Tile::fence = (new FenceTile(85, L"wood", Material::wood))	->setBaseItemTypeAndMaterial(Item::eBaseItemType_fence,	Item::eMaterial_wood)->setDestroyTime(2.0f)->setExplodeable(5)->setSoundType(Tile::SOUND_WOOD)->setTextureName(L"fence")->setDescriptionId(IDS_TILE_FENCE)->setUseDescriptionId(IDS_DESC_FENCE);
 
@@ -1565,6 +1568,7 @@ const int Tile::snow_Id;
 const int Tile::cactus_Id;
 const int Tile::clay_Id;
 const int Tile::reeds_Id;
+const int Tile::observer_Id;
 const int Tile::recordPlayer_Id;
 const int Tile::fence_Id;
 const int Tile::pumpkin_Id;

@@ -59,7 +59,8 @@
 #define __forceinline inline __attribute__((always_inline))
 #endif
 // __declspec(X) -> nothing. Covers dllexport/dllimport/align/novtable/selectany/noinline...
-// (alignment hints are dropped; fine for a headless logic build.)
+// (Alignment hints are dropped; the headless logic build does not use SIME/DirectXMath types
+// that require 16-byte alignment. Revisit if an align(16) struct appears in the compiled path.)
 #ifndef __declspec
 #define __declspec(x)
 #endif

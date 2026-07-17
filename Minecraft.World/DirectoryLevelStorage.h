@@ -82,7 +82,7 @@ private:
 		void writeMappings(DataOutputStream *dos);
 		void readMappings(DataInputStream *dis);
 	};
-#if defined(_LINUX) || defined(_LINUX) || defined(_LINUX) || defined(_LINUX)
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 	unordered_map<PlayerUID, PlayerMappings, PlayerUID::Hash> m_playerMappings;
 #else
 	unordered_map<PlayerUID, PlayerMappings> m_playerMappings;

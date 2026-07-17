@@ -10,7 +10,7 @@ using namespace std;
 #include "Biome.h"
 #include "CThread.h"
 
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 #include "../Minecraft.Client/Linux/LinuxExtras/CustomSet.h"
 #endif
 
@@ -375,7 +375,7 @@ public:
 	void toggleDownfall();
 
 protected:
-#ifdef _LINUX
+#if defined(_LINUX) && !defined(__LINUX_PORT__)
 	// AP - See CustomSet.h for an explanation of this
 	CustomSet chunksToPoll;
 #else

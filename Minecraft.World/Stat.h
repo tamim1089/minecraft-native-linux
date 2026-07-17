@@ -56,5 +56,9 @@ public:
     wstring toString();
 
 public:
+#if defined(__LINUX_PORT__)
+	virtual void handleParamBlob(class LocalPlayer*, void*) {}
+#else
 	virtual void handleParamBlob(shared_ptr<LocalPlayer> plr, byteArray param) { app.DebugPrintf("'Stat.h', Unhandled AwardStat blob./n"); return; }
+#endif
 };

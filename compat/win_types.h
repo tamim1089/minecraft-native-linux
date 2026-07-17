@@ -12,6 +12,8 @@
 #include <cstring>   // memset/memcpy for ZeroMemory etc.
 #include <cwchar>
 
+
+
 // ============================================================
 // ============================================================
 typedef unsigned char       BYTE;
@@ -50,7 +52,7 @@ typedef uintptr_t           ULONG_PTR;
 typedef ULONG_PTR           DWORD_PTR;
 typedef ULONG_PTR           SIZE_T;
 typedef LONG_PTR            SSIZE_T;
-typedef long                HRESULT;
+typedef int32_t             HRESULT;
 
 // The engine treats DWORD as a 32-bit counter/flags type; widening to 64-bit is harmless for
 // logic but mis-sizes any struct serialized to disk/network. Revisit if a binary-layout bug
@@ -423,5 +425,183 @@ char*    _i64toa(long long value, char* str, int radix);
 #include "platform_stub.h"
 #include "win_threads.h"
 #include "win_files.h"
+
+// ---- Definitions the engine expects from x64headers/extraX64.h (provided here since
+//      we skip that file on __LINUX_PORT__ to avoid its console-platform includes) ----
+#ifdef __LINUX_PORT__
+// extraX64.h and console SDK headers are skipped on __LINUX_PORT__;
+// provide the types they define here. UID/XNKID come from platform_stub.h.
+typedef unsigned char byte;
+typedef UID           PlayerUID;
+typedef XNKID         SessionID;
+typedef UID           GameSessionUID;
+struct XINVITE_INFO { int dummy; };
+typedef XINVITE_INFO INVITE_INFO;
+
+struct _Polygon { int dummy; };
+
+// ---- PS3 SDK types (stubs for cell/ SDK) ----
+typedef uint32_t sys_event_flag_t;
+typedef uint32_t SceKernelEventFlag;
+typedef uint32_t SceUID;
+typedef uint16_t SceKernelCpumask;
+typedef uint32_t sys_ppu_thread_t;
+typedef uint32_t ScePthreadAttr;
+typedef uint32_t ScePthread;
+typedef int32_t   SceInt32;
+typedef uint32_t  SceSize;
+
+// ---- CustomMap / CustomSet stubs (PS3-era custom containers) ----
+#include <unordered_map>
+#include <unordered_set>
+template<typename K, typename V>
+using CustomMap = std::unordered_map<K, V>;
+template<typename T>
+using CustomSet = std::unordered_set<T>;
+
+// ---- Forward declarations for World library cross-dependencies ----
+class LocalPlayer;
+class LevelGenerationOptions;
+struct AppStub {
+    template<typename... Args>
+    void DebugPrintf(const char*, Args...) {}
+    LevelGenerationOptions* getLevelGenerationOptions() { return nullptr; }
+    unsigned long long getAppTime() { return 0; }
+    void FatalLoadError() {}
+    void FatalLoadError(const char*) {}
+    bool DebugSettingsOn() { return false; }
+    unsigned int GetGameSettingsDebugMask(int) { return 0; }
+    unsigned int GetGameSettingsDebugMask() { return 0; }
+};
+extern AppStub app;
+
+// ---- CStorage stub (storage abstraction) ----
+class CStorage {
+public:
+    enum EMessageResult {
+        EMessage_Undefined = 0,
+        EMessage_ResultAccept,
+        EMessage_ResultDecline,
+        EMessage_ResultThirdOption,
+        EMessage_Busy,
+        EMessage_Cancelled,
+        EMessage_Pending,
+        EMessage_ResultFourthOption,
+    };
+    enum ESaveGameState {
+        ESaveGame_Idle = 0,
+        ESaveGame_Load,
+        ESaveGame_Save,
+        ESaveGame_Delete,
+        ESaveGame_GetSaveThumbnail,
+        ESaveGame_CopyCompleteFailLocalStorage,
+        ESaveGame_CopyCompleteFailQuota,
+    };
+    enum ESaveGameControlState {};
+    enum ELoadGameStatus {
+        ELoadGame_Idle = 0,
+        ELoadGame_DeviceRemoved,
+    };
+    enum EDeleteGameStatus {
+        EDeleteGame_Idle = 0,
+    };
+    enum ESavingMessage {
+        ESavingMessage_None = 0,
+        ESavingMessage_Short,
+        ESavingMessage_Long,
+    };
+    enum EDLCStatus {
+        EDLC_Idle = 0,
+        EDLC_Pending,
+    };
+    enum ETMSStatus {
+        ETMSStatus_Idle = 0,
+        ETMSStatus_Pending,
+        ETMSStatus_ReadInProgress,
+        ETMSStatus_Fail_ReadInProgress,
+        ETMSStatus_WriteInProgress,
+        ETMSStatus_DeleteInProgress,
+    };
+    enum eGlobalStorage { eGlobalStorage_Title, eGlobalStorage_TitleUser };
+    enum eTMS_FILETYPEVAL { eTMS_FileType_Graphic };
+    enum eOptionsCallback { eOptions_Callback_Idle, eOptions_Callback_Read, eOptions_Callback_Write,
+        eOptions_Callback_Read_Fail, eOptions_Callback_Read_Corrupt, eOptions_Callback_Read_CorruptDeleted,
+        eOptions_Callback_Read_CorruptDeletePending, eOptions_Callback_Read_FileNotFound,
+        eOptions_Callback_Write_Fail };
+    enum eSaveTransferState { eSaveTransfer_Idle, eSaveTransfer_Busy, eSaveTransfer_Converting,
+        eSaveTransfer_FileSizeRetrieved, eSaveTransfer_GettingFileData, eSaveTransfer_FileDataRetrieved,
+        eSaveTransfer_Saving };
+    enum ESGIStatus { ESGIStatus_Idle = 0, ESGIStatus_NoSaves };
+    enum eTMS_FileType { TMS_FILETYPE_BINARY, TMS_UGCTYPE_NONE };
+    static const int PTMSPP_FILEDATA = 0;
+    static const int PTMSPP_FILE_LIST = 0;
+    struct DLC_FILE_DETAILS { int dummy; };
+    struct DLC_FILE_PARAM { int dummy; };
+    struct DLC_TMS_DETAILS { int dummy; };
+    struct PROFILESETTINGS { int dummy; };
+    struct CACHEINFOSTRUCT { int dummy; };
+    struct SAVE_DETAILS { int dummy; };
+    struct SAVETRANSFER_FILE_DETAILS { int dummy; };
+    struct TMS_FILETYPEVAL { int dummy; };
+};
+
+struct STRING_VERIFY_RESPONSE { int dummy; };
+enum ETelemetryChallenges { ETelemetryChallenges_Dummy };
+struct LinuxTLSStorage { template<typename T> static void RemoveThread(T) {} };
+struct _RenderManager {
+    void* allocIOMem(int cap, int align) { return new char[cap]; }
+    void freeIOMem(void* p) { delete[] (char*)p; }
+};
+extern _RenderManager RenderManager;
+struct ShutdownManager {
+    enum { eEventQueueThreads };
+    static void HasStarted(int, void*) {}
+    static bool ShouldRun(int) { return true; }
+    static void HasFinished(int) {}
+};
+
+// ---- CRender stub (Client rendering abstraction) ----
+struct CRender {
+    enum eTextureFormat {
+        TEXTURE_FORMAT_RxGyBzAw = 0,
+    };
+    enum eViewportType {};
+};
+
+// ---- ProfileManager stub ----
+class _ProfileManager {
+public:
+    static _ProfileManager* GetInstance() { return nullptr; }
+    int GetPrimaryPad() { return 0; }
+    void GetUID(int pad, void* uid, bool b) {}
+};
+extern _ProfileManager ProfileManager;
+
+// ---- String-table resource IDs (stubs for .rc / autogen headers) ----
+// String-table resource IDs used in World .cpp files
+const unsigned int IDS_TILE_ANVIL_INTACT = 0;
+const unsigned int IDS_MAX_BOATS = 9999;
+const unsigned int IDS_TILE_BREWINGSTAND = 0;
+const unsigned int IDS_TILE_ANVIL_SLIGHTLYDAMAGED = 1;
+const unsigned int IDS_TILE_ANVIL_VERYDAMAGED = 2;
+const unsigned int IDS_ENCHANTMENT_ARROW_DAMAGE = 0;
+const unsigned int IDS_ENCHANTMENT_ARROW_FIRE = 1;
+const unsigned int IDS_ENCHANTMENT_ARROW_INFINITE = 2;
+const unsigned int IDS_ENCHANTMENT_ARROW_KNOCKBACK = 3;
+const unsigned int IDS_MAX_CHICKENS_BRED                = 0;
+const unsigned int IDS_MAX_WOLVES_BRED                  = 0;
+const unsigned int IDS_MAX_MUSHROOMCOWS_BRED            = 0;
+const unsigned int IDS_MAX_PIGS_SHEEP_COWS_CATS_BRED    = 0;
+const unsigned int IDS_TILE_BED_OCCUPIED                = 0;
+const unsigned int IDS_TILE_BED_PLAYERSLEEP             = 0;
+const unsigned int IDS_TILE_BED_NO_SLEEP                = 0;
+const unsigned int IDS_TILE_BED_NOTSAFE                 = 0;
+const unsigned int IDS_PROGRESS_NEW_WORLD_SEED          = 0;
+
+const int XUSER_INDEX_ANY          = 255;
+const int XUSER_INDEX_FOCUS        = 254;
+const int XUSER_MAX_COUNT          = 4;
+const int MINECRAFT_NET_MAX_PLAYERS = 8;
+#endif
 
 #endif // PORT_WIN_TYPES_H

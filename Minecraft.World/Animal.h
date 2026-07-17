@@ -59,6 +59,7 @@ protected:
 
 public:
 	void setInLoveValue(int value); // 
+	void setInLove(shared_ptr<Player> player);
 	shared_ptr<Player> getLoveCause();
 	bool isInLove();
     void resetLove();
