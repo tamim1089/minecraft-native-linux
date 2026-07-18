@@ -24,14 +24,6 @@ A fully native Linux Minecraft implementation written in C++. Uses OpenGL for re
 
 ---
 
-## Screenshots
-
-| Title screen | In-game |
-|:---:|:---:|
-| ![title](screenshots/title.png) | ![gameplay](screenshots/gameplay1.png) |
-
----
-
 ## What's in this repo
 
 ```
